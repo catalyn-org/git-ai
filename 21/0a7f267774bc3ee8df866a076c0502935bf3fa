@@ -1,0 +1,20 @@
+src/commands/install_hooks.rs
+  s_2d177b9b7cc917::t_f2d2808ef7503f 313-357,361
+  s_2d177b9b7cc917::t_c876d4941b8fcc 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "210a7f267774bc3ee8df866a076c0502935bf3fa",
+  "prompts": {},
+  "sessions": {
+    "s_2d177b9b7cc917": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3aed07a2-30a1-4257-ab4d-96765ae0336d",
+        "model": "default"
+      },
+      "human_author": "ashishduthade <ashishduthade@gmail.com>"
+    }
+  }
+}
