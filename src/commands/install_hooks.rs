@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 const TRACE2_EVENT_TARGET_KEY: &str = "trace2.eventTarget";
 const TRACE2_EVENT_NESTING_KEY: &str = "trace2.eventNesting";
@@ -309,9 +310,55 @@ fn ensure_daemon(dry_run: bool) {
     }
 }
 
+fn should_skip_daemon_lifecycle() -> bool {
+    std::env::var_os("GIT_AI_TEST_DB_PATH").is_some()
+        || std::env::var_os("GITAI_TEST_DB_PATH").is_some()
+}
+
+fn shutdown_daemon_before_reinstall() {
+    if should_skip_daemon_lifecycle() {
+        return;
+    }
+
+    let Ok(daemon_config) = DaemonConfig::from_env_or_default_paths() else {
+        return;
+    };
+
+    if !crate::commands::daemon::daemon_is_up(&daemon_config) {
+        return;
+    }
+
+    if let Err(e) = crate::commands::daemon::stop_daemon(
+        &daemon_config,
+        Duration::from_secs(5),
+    ) {
+        eprintln!(
+            "[git-ai] warning: failed to shut down background service before reinstall: {}",
+            e
+        );
+    }
+}
+
+/// Uninstall any existing hooks and stop the daemon so install can run from a clean state.
+fn prepare_clean_install(dry_run: bool, verbose: bool) -> Result<(), GitAiError> {
+    println!("\n\x1b[1mCleaning up previous installation\x1b[0m");
+
+    if !dry_run {
+        shutdown_daemon_before_reinstall();
+        cleanup_legacy_envelope_logs();
+    }
+
+    let binary_path = get_current_binary_path()?;
+    let params = HookInstallerParams { binary_path };
+    crate::tokio_runtime::block_on(async_run_uninstall(&params, dry_run, verbose))?;
+
+    Ok(())
+}
+
 /// Main entry point for install-hooks command
 pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     let options = parse_install_options(args)?;
+    prepare_clean_install(options.dry_run, options.verbose)?;
     let install_config = InstallConfig {
         api_base: options.api_base.clone().or_else(|| {
             std::env::var("API_BASE")
@@ -345,12 +392,6 @@ pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
 
     // Run async operations and convert result.
     let statuses = crate::tokio_runtime::block_on(async_run_install(&params, &options))?;
-
-    // Clean up legacy envelope logs directory and related artifacts.
-    // These are no longer used — all telemetry now routes through the daemon.
-    if !options.dry_run {
-        cleanup_legacy_envelope_logs();
-    }
 
     Ok(to_hashmap(statuses))
 }
